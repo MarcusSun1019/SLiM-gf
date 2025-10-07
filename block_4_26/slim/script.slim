@@ -1,0 +1,121 @@
+// SLiM script for block 4: migration, selection, adaptive loci
+
+initialize(){
+
+    // Setup seed
+    if (!exists("slimgui")) {
+        defineConstant("seed", getSeed());
+    }
+    else {
+        setSeed(asInteger(round(runif(1, 1, 2^62 - 1))));
+        defineConstant("seed", getSeed());
+        catn("Actual seed: " + asInteger(seed));
+    }
+
+    // define parameters with defaults that can be overridden
+    setCfgParam("delta_t1", 100000);
+    setCfgParam("delta_t2", 10000);
+    setCfgParam("delta_t3", 10000);
+    setCfgParam("delta_t4", 10000);
+    setCfgParam("m", 0.01);
+    setCfgParam("direction", 0);
+    setCfgParam("gf_time_frac", 0.5);
+    setCfgParam("r", 1e-8);
+    setCfgParam("s", 0.1);
+    setCfgParam("loci", 5);
+    setCfgParam("base_position", 100000);
+
+    // unique identifier for the run - seed_modelindex
+    setCfgParam("identifier", paste(asString(seed), modelindex, sep = "_"));
+    setCfgParam("o_path_name", paste0('/g/data/ht96/ys7485/CH2/block_4_26/output4_', identifier, '.vcf'));
+
+    // initialise other simulation components
+    initializeMutationRate(1e-8);
+    // m1 mutation type: neutral
+    initializeMutationType("m1", 0.5, "f", 0.0);
+    // m2 mutation type: beneficial in P3 but deleterious in P2
+    initializeMutationType("m2", 1.0, "f", s);
+    // g1 genomic element type: uses m1 for all mutations
+    initializeGenomicElementType("g1", m1, 1.0);
+    // uniform chromosome of length 100kb with uniform recombination
+    initializeGenomicElement(g1, 0, 999999);
+    initializeRecombinationRate(r);
+}
+
+//
+// Use the function instead of defineConstant to prevent errors between when you test in slimgui vs when you run your simulations on HPC
+//
+function (void) setCfgParam(s$ name, ifls value) {
+    // Automate defining constants for SLiMgui and slim command line
+
+    if (!exists(name)) {
+        defineConstant(name, value);
+    }
+}
+
+// create the ancestral population p0
+1 early() {
+    sim.addSubpop("p0", 10000);
+}
+
+// split ancestral population into in-group p123 and outgroup p4. the burn-in time is 10,000 generations
+delta_t1 early() {
+    sim.addSubpopSplit("p4", 10000, p0);
+    sim.addSubpopSplit("p123", 10000, p0);
+    p0.setSubpopulationSize(0);
+}
+
+// split p123 into p3 and p12
+(delta_t1 + delta_t2) early() {
+    sim.addSubpopSplit("p3", 10000, p123);
+    sim.addSubpopSplit("p12", 10000, p123);
+    p123.setSubpopulationSize(0);
+}
+
+// introduce m2 mutation into p3
+(delta_t1 + delta_t2) late() {
+	// save the state of the simulation
+	// sim.outputFull(tempdir() + "slim_" + seed + ".txt");
+	if (loci == 1) {
+		positions = base_position;
+	} else {
+		positions = base_position + (0:(loci-1))*200000;
+	}
+	//introduce the sweep mutation
+	p3.haplosomes.addNewDrawnMutation(m2, positions);
+	// target = p3.haplosomes;
+	// target.addNewDrawnMutation(m2, 100000);
+}
+
+// split p12 into p1 and p2
+(delta_t1 + delta_t2 + delta_t3) early() {
+    sim.addSubpopSplit("p1", 10000, p12);
+    sim.addSubpopSplit("p2", 10000, p12);
+    p12.setSubpopulationSize(0);
+}
+
+// gene flow from p3 to p2
+(delta_t1 + delta_t2 + delta_t3 + asInteger(gf_time_frac * delta_t4)) early() {
+    p2.setMigrationRates(p3, m);
+    p3.setMigrationRates(p2, direction);
+}
+
+// spatially varying selection
+mutationEffect(m2, p2) { return 1/effect; }
+
+// stop gene flow
+(delta_t1 + delta_t2 + delta_t3 + asInteger(gf_time_frac * delta_t4) + 1) early() {
+    p2.setMigrationRates(p3, 0);
+}
+
+// Output and terminate the simulation. Sample individuals from each population into VCF file
+(delta_t1 + delta_t2 + delta_t3 + delta_t4) late() {
+    p1_sample = p1.sampleIndividuals(50).haplosomes;
+    p2_sample = p2.sampleIndividuals(50).haplosomes;
+    p3_sample = p3.sampleIndividuals(50).haplosomes;
+    p4_sample = p4.sampleIndividuals(50).haplosomes;
+    p_all_sample = c(p1_sample, p2_sample, p3_sample, p4_sample);
+
+    p_all_sample.outputHaplosomesToVCF(filePath=o_path_name, simplifyNucleotides=F);
+    sim.simulationFinished();
+}
