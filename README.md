@@ -9,13 +9,25 @@ To streamline the analysis, I identified five focused question blocks, organisin
 - Platform: HPC/Gadi
 - Parallelisation strategy: Each simulation was run with 48 replicates, matching the 48 CPUs/cores available per node on Gadi. This setup maximised computational efficiency and ensured robust results.
 
-# Folder Structure
-Each question block contains the following subfolders:
-- PBS/
-- R/
-- slim/
-- done/ (This folder is used to track whether each simulation has completed successfully.)
+# Folder Structure and Contents
+Each question block contains the four subfolders: R/, slim/, /PBS, and done/. Below is a breakdown of the six key files used to run simulations in parallel on HPC/Gadi:
 
-These folders collectively include six essential files that enable parallel execution of simulations.
+## R/
+Contains input data for simulation replicates and parameter combinations:
+- seeds.csv - A list of 48 unique random seeds, each corresponding to one replicate.
+- combos.csv - Defines the parameter values varied in each question block and includes all combinations used in the simulations.
 
-Note: Please disregard the folders old_block_5.1 and old_block_5.2. These have been updated and merged into block_5_42. 
+## slim/
+Contains the SLiM simulation script:
+- script.slim - The main SLiM script that runs the simulation, generates genomic data, and outputs results in VCF format.
+
+## PBS/
+Handles job scheduling and execution on Gadi:
+- cmds.txt - A table with three columns: modelID, seed, and the path to runSimulationSR.sh. Each row represents a single simulation replicate.
+- runSimulationSR.sh - A shell script reads parameter values from combos.csv and executes the SLiM simulation once.
+- jobsub.sh - The job submission script used to launch simulations on Gadi via PBS.
+
+## done/
+Used for tracking simulation completion. This folder stores markers indicating whether each simulation has finished successfully. 
+
+Note: Please ignore the folders old_block_5.1 and old_block_5.2. These have been updated and merged into block_5_42. 
